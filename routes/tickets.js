@@ -154,4 +154,65 @@ router.delete(
   }
 );
 
+router.post("/:id/comments", auth, async (req, res) => {
+  try {
+    const { body, isInternal } = req.body;
+
+    const ticket = await Ticket.findById(req.params.id);
+
+    if (!ticket) {
+      return res.status(404).json({
+        message: "Ticket not found"
+      });
+    }
+
+    if (
+      isInternal &&
+      !["agent", "admin"].includes(req.user.role)
+    ) {
+      return res.status(403).json({
+        message: "Only agent/admin can create internal notes"
+      });
+    }
+
+    const comment = await Comment.create({
+      ticket: req.params.id,
+      author: req.user.id,
+      body,
+      isInternal
+    });
+
+    res.status(201).json(comment);
+
+  } catch (error) {
+    res.status(500).json({
+      message: error.message
+    });
+  }
+});
+
+router.get("/:id/comments", auth, async (req, res) => {
+  try {
+    let comments;
+
+    if (req.user.role === "customer") {
+      comments = await Comment.find({
+        ticket: req.params.id,
+        isInternal: false
+      }).populate("author", "name email role");
+    } else {
+      comments = await Comment.find({
+        ticket: req.params.id
+      }).populate("author", "name email role");
+    }
+
+    res.json(comments);
+
+  } catch (error) {
+    res.status(500).json({
+      message: error.message
+    });
+  }
+});
+
 module.exports = router;

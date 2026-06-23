@@ -15,6 +15,7 @@ app.use(morgan("dev"));
 
 app.use("/auth", require("./routes/auth"));
 app.use("/tickets", require("./routes/tickets"));
+app.use("/tickets", require("./routes/comments"));
 
 const PORT = process.env.PORT || 5000;
 
