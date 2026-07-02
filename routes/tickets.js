@@ -2,25 +2,49 @@ const express = require("express");
 const Ticket = require("../models/Ticket");
 const auth = require("../middleware/auth");
 const rbac = require("../middleware/rbac");
+const upload = require("../middleware/upload");
 
 const router = express.Router();
 
-router.post("/", auth, rbac("customer"), async (req, res) => {
-  try {
-    const { title, description, priority } = req.body;
+router.post(
+  "/",
+  auth,
+  rbac("customer"),
+  upload.array("attachments", 5),
+  async (req, res) => {
+    try {
+      const { title, description, priority } = req.body;
 
-    const ticket = await Ticket.create({
-      title,
-      description,
-      priority,
-      createdBy: req.user.id
-    });
+      const files = req.files?.map(file => file.path) || [];
 
-    res.status(201).json(ticket);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+      let slaDueAt;
+
+      if (priority === "low") {
+        slaDueAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+      } else if (priority === "medium") {
+        slaDueAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+      } else {
+        slaDueAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      }
+
+      const ticket = await Ticket.create({
+        title,
+        description,
+        priority,
+        createdBy: req.user.id,
+        attachments: files,
+        slaDueAt
+      });
+
+      res.status(201).json(ticket);
+
+    } catch (error) {
+      res.status(500).json({
+        message: error.message
+      });
+    }
   }
-});
+);
 
 router.get("/", auth, async (req, res) => {
   try {
@@ -154,10 +178,8 @@ router.delete(
   }
 );
 
-router.post("/:id/comments", auth, async (req, res) => {
+router.get("/:id/attachments", auth, async (req, res) => {
   try {
-    const { body, isInternal } = req.body;
-
     const ticket = await Ticket.findById(req.params.id);
 
     if (!ticket) {
@@ -166,47 +188,7 @@ router.post("/:id/comments", auth, async (req, res) => {
       });
     }
 
-    if (
-      isInternal &&
-      !["agent", "admin"].includes(req.user.role)
-    ) {
-      return res.status(403).json({
-        message: "Only agent/admin can create internal notes"
-      });
-    }
-
-    const comment = await Comment.create({
-      ticket: req.params.id,
-      author: req.user.id,
-      body,
-      isInternal
-    });
-
-    res.status(201).json(comment);
-
-  } catch (error) {
-    res.status(500).json({
-      message: error.message
-    });
-  }
-});
-
-router.get("/:id/comments", auth, async (req, res) => {
-  try {
-    let comments;
-
-    if (req.user.role === "customer") {
-      comments = await Comment.find({
-        ticket: req.params.id,
-        isInternal: false
-      }).populate("author", "name email role");
-    } else {
-      comments = await Comment.find({
-        ticket: req.params.id
-      }).populate("author", "name email role");
-    }
-
-    res.json(comments);
+    res.json(ticket.attachments);
 
   } catch (error) {
     res.status(500).json({
